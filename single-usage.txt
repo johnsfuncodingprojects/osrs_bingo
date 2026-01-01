@@ -1,0 +1,7 @@
+﻿C:\Users\John\Coding Projects\osrs_bingo\webapp\src\app\admin\claims\page.tsx:44: .maybeSingle();
+C:\Users\John\Coding Projects\osrs_bingo\webapp\src\app\board\page.tsx:177: .maybeSingle();
+C:\Users\John\Coding Projects\osrs_bingo\webapp\src\app\team\page.tsx:49: .maybeSingle();
+C:\Users\John\Coding Projects\osrs_bingo\webapp\src\app\team\page.tsx:72: .maybeSingle();
+C:\Users\John\Coding Projects\osrs_bingo\webapp\src\app\team\page.tsx:88: .single();
+C:\Users\John\Coding Projects\osrs_bingo\webapp\src\app\team\page.tsx:149: .maybeSingle();
+C:\Users\John\Coding Projects\osrs_bingo\webapp\src\app\team\page.tsx:162: .single();

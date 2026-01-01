@@ -1,31 +1,43 @@
-# --- Secrets / env ---
-.env
-.env.*
-backend/.env
-backend/.env.*
-webapp/.env.local
-frontend/.env.local
-
-# --- Python ---
-backend/.venv/
+# =====================
+# Python
+# =====================
 .venv/
+backend/.venv/
 **/.venv/
 __pycache__/
 **/__pycache__/
 *.pyc
 
-# --- Node / Next.js ---
-node_modules/
+
+# =====================
+# Node / Next.js
+# =====================
 **/node_modules/
-.next/
 **/.next/
-dist/
 **/dist/
-.turbo/
 **/.turbo/
 
-# --- OS / IDE ---
+# =====================
+# Env files / secrets
+# =====================
+**/.env
+**/.env.*
+!backend/.env.example
+!webapp/.env.example
+
+# =====================
+# OS / Editor junk
+# =====================
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# Env files / secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!backend/.env.example
+!webapp/.env.example
