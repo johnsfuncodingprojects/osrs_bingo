@@ -667,6 +667,10 @@ export default function BoardPage() {
 
         <div className="btile__footer" onClick={(e) => e.stopPropagation()}>
           <div className="btile__interest">
+            <div className="btile__progressLine" title="Tile progress">
+              {square.progress_pct ?? 0}% complete
+            </div>
+
             <button
               type="button"
               className={`workbtn ${me ? "workbtn--on" : ""}`}
@@ -675,22 +679,13 @@ export default function BoardPage() {
               title="Toggle interest in this tile"
             >
               <span className="workbtn-label">Interested</span>
-              <span className="workbtn-check" aria-hidden="true">
-                {me ? "✓" : ""}
-              </span>
+              <span className="workbtn-check" aria-hidden="true">{me ? "✓" : ""}</span>
             </button>
 
             <div className="btile__interestCount" title="Number of interested users">
               {interested.length} interested
             </div>
           </div>
-
-          {/* tiny progress readout (subtle) */}
-          {showProgress ? (
-            <div className="btile__pct" title="Progress percent">
-              {pct}%
-            </div>
-          ) : null}
         </div>
 
         {done && <div className="btile__check">✓</div>}
@@ -1038,7 +1033,7 @@ export default function BoardPage() {
           cursor: pointer;
 
           display: grid;
-          grid-template-rows: 70px 1fr 34px; /* img / text / footer */
+          grid-template-rows: 70px 1fr 64px; /* img / text / footer (FIX: fixed footer height) */
           gap: 8px;
 
           transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
@@ -1075,9 +1070,9 @@ export default function BoardPage() {
         }
         .btile--empty { opacity: 0.85; }
 
-        /* no image: reclaim vertical space */
+        /* no image: reclaim vertical space (FIX: remove stray 'f', keep footer height) */
         .btile--noimg {
-          grid-template-rows: 1fr 34px; /* text / footer */
+          grid-template-rows: 1fr 64px; /* text / footer */
         }
 
         .btile__img {
@@ -1131,37 +1126,47 @@ export default function BoardPage() {
           overflow: hidden;
         }
 
-        .btile__footer {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          padding-top: 0;
-          margin-top: -4px;
-          gap: 10px;
+        /* Footer: fill footer row and allow pinning the count to the bottom */
+        .btile__footer{
+          position: relative;
+          z-index: 2;
+          height: 64px;            /* MUST match grid footer row */
+          display: block;
+          align-self: stretch;
         }
 
+        /* Internal layout: % on top, Interested toggle, spacer, count pinned bottom */
         .btile__interest{
-          display: flex;
-          flex-direction: column;
+          width: 100%;
+          height: 100%;
+          display: grid;
+          grid-template-rows: auto auto 1fr auto;
+          align-items: start;
           gap: 4px;
-          align-items: flex-start;
         }
 
-        .btile__interestCount{
-          font-size: 11px;
-          font-weight: 800;
-          color: rgba(255,255,255,.62);
-          line-height: 1;
-          padding-left: 2px;
-        }
-
-        .btile__pct{
+        /* Percent line above Interested */
+        .btile__pct,
+        .btile__progressLine{
           font-size: 11px;
           font-weight: 900;
-          color: rgba(255,255,255,.70);
+          color: #fff; /* FIX: readable on yellow */
+          text-shadow: 0 1px 2px rgba(0,0,0,.65);
           line-height: 1;
-          padding-top: 8px; /* aligns visually with count line */
+          margin: 0;
           white-space: nowrap;
+        }
+
+        /* Interested count pinned to bottom of tile */
+        .btile__interestCount{
+          align-self: end;
+          margin: 0;
+          font-size: 11px;
+          font-weight: 800;
+          color: rgba(255,255,255,.72);
+          text-shadow: 0 1px 2px rgba(0,0,0,.55);
+          line-height: 1;
+          padding-left: 2px;
         }
 
         .interested-count{
@@ -1203,8 +1208,8 @@ export default function BoardPage() {
         }
         @media (max-width: 700px) {
           .bgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .btile { height: 190px; grid-template-rows: 82px 1fr 34px; }
-          .btile--noimg { grid-template-rows: 1fr 34px; }
+          .btile { height: 190px; grid-template-rows: 82px 1fr 64px; } /* keep fixed footer */
+          .btile--noimg { grid-template-rows: 1fr 64px; }
         }
       `}</style>
     </>
