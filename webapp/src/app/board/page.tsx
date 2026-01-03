@@ -19,6 +19,7 @@ type Square = {
   completed: boolean;
   completed_by: string | null;
   completed_at: string | null;
+  progress_pct: number;
 };
 
 type Claim = {
@@ -42,7 +43,6 @@ type Profile = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
-  rsn: string | null;
 };
 
 const DEFAULT_SQUARES: Array<{
@@ -92,7 +92,7 @@ function humanTime(iso?: string | null) {
   try {
     return new Date(iso).toLocaleString();
   } catch {
-    return iso ?? "";
+    return iso;
   }
 }
 
@@ -106,17 +106,18 @@ function toNameFallback(userId: string) {
   return `User ${userId.slice(0, 6)}`;
 }
 
-function formatUserLabel(userId: string, p?: Profile) {
-  const base = p?.display_name || toNameFallback(userId);
-  const rsn = (p?.rsn || "").trim();
-  return rsn ? `${base} (RSN: ${rsn})` : base;
+function clampPct(v: any) {
+  const n = Number(v ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
 export default function BoardPage() {
   const { session, loading } = useSession();
   const router = useRouter();
 
-  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const searchParams =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const teamOverride = searchParams?.get("team"); // admin-only
 
   const [teamId, setTeamId] = useState<string | null>(null);
@@ -140,6 +141,7 @@ export default function BoardPage() {
   const [editReq, setEditReq] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [editRulesText, setEditRulesText] = useState("{}");
+  const [editProgressPct, setEditProgressPct] = useState(0); // ✅ new
 
   // Modal claims
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -164,6 +166,7 @@ export default function BoardPage() {
   const floatingRight = byCode.get("S02") ?? null;
 
   const gridCodes = useMemo(() => {
+    // S03..S30 (28 tiles)
     return Array.from({ length: 28 }, (_, i) => `S${String(i + 3).padStart(2, "0")}`);
   }, []);
 
@@ -215,6 +218,7 @@ export default function BoardPage() {
     setEditReq(openSquare.requirement ?? "");
     setEditImageUrl(openSquare.image_url ?? "");
     setEditRulesText(openSquare.rules_json ? JSON.stringify(openSquare.rules_json, null, 2) : "{}");
+    setEditProgressPct(clampPct(openSquare.progress_pct ?? 0)); // ✅ new
 
     setClaims([]);
     setProofSignedUrl(null);
@@ -240,7 +244,9 @@ export default function BoardPage() {
   async function loadSquares(tid: string) {
     const { data, error } = await supabase
       .from("squares")
-      .select("id,team_id,code,title,description,requirement,image_url,rules_json,completed,completed_by,completed_at")
+      .select(
+        "id,team_id,code,title,description,requirement,image_url,rules_json,completed,completed_by,completed_at,progress_pct"
+      )
       .eq("team_id", tid)
       .order("code", { ascending: true });
 
@@ -251,8 +257,8 @@ export default function BoardPage() {
   async function loadInterestsAndProfiles(tid: string) {
     // 1) get square ids for this team
     const { data: sqIds, error: sqErr } = await supabase.from("squares").select("id").eq("team_id", tid);
-
     if (sqErr) throw sqErr;
+
     const ids = (sqIds ?? []).map((x: any) => x.id as string);
     if (ids.length === 0) {
       setInterestMap({});
@@ -285,7 +291,10 @@ export default function BoardPage() {
       return;
     }
 
-    const { data: profs, error: pErr } = await supabase.from("profiles").select("id,display_name,avatar_url,rsn").in("id", uidList);
+    const { data: profs, error: pErr } = await supabase
+      .from("profiles")
+      .select("id,display_name,avatar_url")
+      .in("id", uidList);
 
     if (pErr) {
       setProfilesById({});
@@ -293,7 +302,7 @@ export default function BoardPage() {
     }
 
     const map: Record<string, Profile> = {};
-    for (const p of (profs ?? []) as any[]) map[p.id] = p as Profile;
+    for (const p of (profs ?? []) as any[]) map[p.id] = p;
     setProfilesById(map);
   }
 
@@ -320,7 +329,11 @@ export default function BoardPage() {
       const has = myInterested(squareId);
 
       if (has) {
-        const { error } = await supabase.from("square_interests").delete().eq("square_id", squareId).eq("user_id", session.user.id);
+        const { error } = await supabase
+          .from("square_interests")
+          .delete()
+          .eq("square_id", squareId)
+          .eq("user_id", session.user.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("square_interests").insert({
@@ -417,6 +430,9 @@ export default function BoardPage() {
     }
   }
 
+  // ✅ Optional polish:
+  // - When marking completed: force progress_pct to 100
+  // - When unmarking: force progress_pct to 0
   async function adminMarkCompleted(squareId: string, completed: boolean) {
     if (!isAdmin) return;
 
@@ -427,8 +443,14 @@ export default function BoardPage() {
         square_id: squareId,
         completed: completed,
       });
-
       if (error) throw error;
+
+      // best-effort: keep progress_pct aligned with completed state
+      const { error: updErr } = await supabase
+        .from("squares")
+        .update({ progress_pct: completed ? 100 : 0 })
+        .eq("id", squareId);
+      if (updErr) console.warn("progress sync update failed:", updErr);
 
       if (teamId) await loadSquares(teamId);
       setMsg(completed ? "Square marked completed." : "Square unmarked.");
@@ -439,6 +461,9 @@ export default function BoardPage() {
     }
   }
 
+  // ✅ Optional polish:
+  // - If admin saves progress_pct >= 100, auto-mark completed (green) via RPC.
+  // - If admin sets progress below 100, we DO NOT auto-uncomplete (completion remains explicit).
   async function saveSquareEdits() {
     if (!openSquare || !teamId) return;
     if (!isAdmin) {
@@ -451,6 +476,7 @@ export default function BoardPage() {
 
     try {
       const rulesObj = safeJsonParse(editRulesText);
+      const nextPct = clampPct(editProgressPct);
 
       const { error } = await supabase
         .from("squares")
@@ -459,14 +485,27 @@ export default function BoardPage() {
           requirement: editReq.trim() || openSquare.requirement,
           image_url: editImageUrl.trim() || null,
           rules_json: rulesObj,
+          progress_pct: nextPct,
         })
         .eq("id", openSquare.id)
         .eq("team_id", teamId);
 
       if (error) throw error;
 
+      // auto-complete if progress hits 100 and not already completed
+      if (nextPct >= 100 && !openSquare.completed) {
+        const { error: rpcErr } = await supabase.rpc("admin_mark_square_completed", {
+          square_id: openSquare.id,
+          completed: true,
+        });
+        if (rpcErr) throw rpcErr;
+
+        // ensure progress is exactly 100 (in case)
+        await supabase.from("squares").update({ progress_pct: 100 }).eq("id", openSquare.id);
+      }
+
       await loadSquares(teamId);
-      setMsg("Saved.");
+      setMsg(nextPct >= 100 ? "Saved (auto-marked completed)." : "Saved.");
     } catch (e: any) {
       setMsg(e.message ?? "Failed to save.");
     } finally {
@@ -496,9 +535,12 @@ export default function BoardPage() {
         completed: false,
         completed_by: null,
         completed_at: null,
+        progress_pct: 0,
       }));
 
-      const { error } = await supabase.from("squares").upsert(rows, { onConflict: "team_id,code" });
+      const { error } = await supabase.from("squares").upsert(rows, {
+        onConflict: "team_id,code",
+      });
       if (error) throw error;
 
       await loadTeamData(teamId);
@@ -543,6 +585,7 @@ export default function BoardPage() {
         completed: false,
         completed_by: null,
         completed_at: null,
+        progress_pct: 0,
       }));
 
       const { error } = await supabase.from("squares").insert(rows);
@@ -574,7 +617,7 @@ export default function BoardPage() {
           </div>
 
           <div className="btile__footer" onClick={(e) => e.stopPropagation()}>
-            <span className="interested-count">Interested 0</span>
+            <span className="interested-count">0 interested</span>
           </div>
         </button>
       );
@@ -585,6 +628,9 @@ export default function BoardPage() {
     const me = myInterested(square.id);
     const hasImg = !!square.image_url;
 
+    const pct = clampPct(square.progress_pct ?? 0);
+    const showProgress = !done && pct > 0 && pct < 100;
+
     return (
       <button
         key={key}
@@ -592,13 +638,25 @@ export default function BoardPage() {
           "btile",
           variant === "floating" ? "btile--floating" : "",
           done ? "btile--done" : "",
+          showProgress ? "btile--progress" : "",
           !hasImg ? "btile--noimg" : "",
         ].join(" ")}
+        style={{ ["--pct" as any]: `${pct}%` }}
         onClick={() => setOpenSquareId(square.id)}
       >
+        {/* Only show the image section when an image exists */}
         {hasImg ? (
           <div className="btile__img">
-            <img src={square.image_url} alt={square.title} />
+            <img
+              src={square.image_url!}
+              alt={square.title}
+              onLoad={(e) => {
+                // optional: flip to cover for very wide images (looks better)
+                const img = e.currentTarget;
+                const ratio = img.naturalWidth / (img.naturalHeight || 1);
+                img.classList.toggle("img-cover", ratio > 1.25);
+              }}
+            />
           </div>
         ) : null}
 
@@ -626,6 +684,13 @@ export default function BoardPage() {
               {interested.length} interested
             </div>
           </div>
+
+          {/* tiny progress readout (subtle) */}
+          {showProgress ? (
+            <div className="btile__pct" title="Progress percent">
+              {pct}%
+            </div>
+          ) : null}
         </div>
 
         {done && <div className="btile__check">✓</div>}
@@ -634,6 +699,7 @@ export default function BoardPage() {
   };
 
   const openInterested = openSquare ? interestedUsers(openSquare.id) : [];
+  const openPct = openSquare ? clampPct(openSquare.progress_pct ?? 0) : 0;
 
   return (
     <>
@@ -689,6 +755,7 @@ export default function BoardPage() {
 
           {msg && <div className="alert" style={{ marginTop: 14 }}>{msg}</div>}
 
+          {/* Floating row: 7 columns, tile in col 1 and col 7 */}
           <div className="bgrid bgrid--floating" style={{ marginTop: 18 }}>
             {renderTile(floatingLeft, "float-left", "floating")}
             <div className="bspacer" />
@@ -699,6 +766,7 @@ export default function BoardPage() {
             {renderTile(floatingRight, "float-right", "floating")}
           </div>
 
+          {/* Main board: 4 rows × 7 cols = 28 tiles */}
           <div className="bgrid bgrid--main" style={{ marginTop: 12 }}>
             {gridCodes.map((code) => {
               const sq = byCode.get(code) ?? null;
@@ -708,6 +776,7 @@ export default function BoardPage() {
         </div>
       </main>
 
+      {/* MODAL */}
       {openSquareId && openSquare && (
         <div
           className="modal-backdrop"
@@ -718,13 +787,20 @@ export default function BoardPage() {
           <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <div>
-                <div className="row" style={{ gap: 10 }}>
+                <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
                   {openSquare.completed && <span className="badge badge-good">Completed</span>}
                   <span className="badge mono">{openSquare.code}</span>
                   <span className="badge">Interested: {openInterested.length}</span>
+                  {!openSquare.completed && openPct > 0 && openPct < 100 ? (
+                    <span className="badge" style={{ background: "rgba(255, 208, 77, 0.18)" }}>
+                      Progress: {openPct}%
+                    </span>
+                  ) : null}
                 </div>
 
-                <div style={{ marginTop: 10, fontWeight: 950, fontSize: 22 }}>{openSquare.title}</div>
+                <div style={{ marginTop: 10, fontWeight: 950, fontSize: 22 }}>
+                  {openSquare.title}
+                </div>
 
                 <div className="p" style={{ marginTop: 6, fontSize: 14 }}>
                   {openSquare.requirement?.trim() ? openSquare.requirement : "No requirement yet."}
@@ -732,9 +808,7 @@ export default function BoardPage() {
               </div>
 
               <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button className="btn btn-ghost" onClick={() => setOpenSquareId(null)}>
-                  Close
-                </button>
+                <button className="btn btn-ghost" onClick={() => setOpenSquareId(null)}>Close</button>
               </div>
             </div>
 
@@ -760,26 +834,24 @@ export default function BoardPage() {
                   title="Toggle interest in this tile"
                 >
                   <span className="workbtn-label">Interested</span>
-                  <span className="workbtn-check" aria-hidden="true">
-                    {myInterested(openSquare.id) ? "✓" : ""}
-                  </span>
+                  <span className="workbtn-check" aria-hidden="true">{myInterested(openSquare.id) ? "✓" : ""}</span>
                 </button>
               </div>
 
-              <p className="p" style={{ marginTop: 6 }}>Planning/coordination only — claims are separate.</p>
+              <p className="p" style={{ marginTop: 6 }}>
+                Planning/coordination only — claims are separate.
+              </p>
 
               <div className="interest-list">
                 {openInterested.length === 0 ? (
-                  <div className="tiny" style={{ padding: 12 }}>
-                    Nobody yet.
-                  </div>
+                  <div className="tiny" style={{ padding: 12 }}>Nobody yet.</div>
                 ) : (
                   openInterested.slice(0, 50).map((u) => {
                     const p = profilesById[u.user_id];
-                    const name = formatUserLabel(u.user_id, p);
+                    const name = p?.display_name || toNameFallback(u.user_id);
                     const url = p?.avatar_url || "/avatar.png";
                     return (
-                      <div key={`${openSquare.id}:${u.user_id}`} className="interest-row">
+                      <div key={u.user_id} className="interest-row">
                         <img src={url} className="avatar-sm" alt="" />
                         <div style={{ fontWeight: 800 }}>{name}</div>
                       </div>
@@ -826,7 +898,7 @@ export default function BoardPage() {
                       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                           <div style={{ fontWeight: 900 }}>
-                            {formatUserLabel(c.user_id, profilesById[c.user_id])}
+                            {profilesById[c.user_id]?.display_name || toNameFallback(c.user_id)}
                           </div>
                           <div className="tiny">
                             {c.status.toUpperCase()} • submitted {humanTime(c.created_at)}
@@ -879,7 +951,9 @@ export default function BoardPage() {
                       {openSquare.completed ? "Unmark completed" : "Mark completed (green)"}
                     </button>
 
-                    <div className="tiny">{openSquare.completed ? `Completed @ ${humanTime(openSquare.completed_at)}` : "Not completed"}</div>
+                    <div className="tiny">
+                      {openSquare.completed ? `Completed @ ${humanTime(openSquare.completed_at)}` : "Not completed"}
+                    </div>
                   </div>
 
                   <details style={{ marginTop: 14 }}>
@@ -892,11 +966,41 @@ export default function BoardPage() {
                       <label className="tile-meta">Requirement</label>
                       <input className="input" value={editReq} onChange={(e) => setEditReq(e.target.value)} />
 
+                      <label className="tile-meta">Progress %</label>
+                      <div className="row" style={{ gap: 12, alignItems: "center" }}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={editProgressPct}
+                          onChange={(e) => setEditProgressPct(clampPct(e.target.value))}
+                          className="input"
+                          style={{ flex: 1 }}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={editProgressPct}
+                          onChange={(e) => setEditProgressPct(clampPct(e.target.value))}
+                          className="input mono"
+                          style={{ width: 90 }}
+                        />
+                      </div>
+                      <div className="tiny" style={{ marginTop: 6 }}>
+                        Yellow fill is bottom-up. If you set this to <b>100</b> and save, it auto-marks completed (green).
+                      </div>
+
                       <label className="tile-meta">Image URL</label>
                       <input className="input" value={editImageUrl} onChange={(e) => setEditImageUrl(e.target.value)} />
 
                       <label className="tile-meta">rules_json</label>
-                      <textarea className="textarea" value={editRulesText} onChange={(e) => setEditRulesText(e.target.value)} spellCheck={false} />
+                      <textarea
+                        className="textarea"
+                        value={editRulesText}
+                        onChange={(e) => setEditRulesText(e.target.value)}
+                        spellCheck={false}
+                      />
 
                       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
                         <button className="btn btn-primary" onClick={saveSquareEdits} disabled={busy}>
@@ -934,7 +1038,7 @@ export default function BoardPage() {
           cursor: pointer;
 
           display: grid;
-          grid-template-rows: 70px 1fr 34px;
+          grid-template-rows: 70px 1fr 34px; /* img / text / footer */
           gap: 8px;
 
           transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
@@ -944,14 +1048,36 @@ export default function BoardPage() {
           border-color: rgba(255,255,255,0.18);
           box-shadow: 0 10px 25px rgba(0,0,0,.45);
         }
+
+        /* ✅ progress fill (yellow) */
+        .btile--progress::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          height: var(--pct, 0%);
+          background: rgba(255, 208, 77, 0.28);
+          border-radius: 16px;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        /* keep contents above overlay */
+        .btile > * {
+          position: relative;
+          z-index: 1;
+        }
+
         .btile--done {
           background: linear-gradient(180deg, rgba(36,78,48,.92), rgba(24,56,34,.96));
           border-color: rgba(46,204,113,.35);
         }
         .btile--empty { opacity: 0.85; }
 
+        /* no image: reclaim vertical space */
         .btile--noimg {
-          grid-template-rows: 1fr 34px;
+          grid-template-rows: 1fr 34px; /* text / footer */
         }
 
         .btile__img {
@@ -959,15 +1085,22 @@ export default function BoardPage() {
           background: rgba(0,0,0,.35);
           border: 1px solid rgba(255,255,255,.08);
           overflow: hidden;
+          display: grid;
+          place-items: center;
         }
 
-        .btile__img img {
+        .btile__img img{
           width: 100%;
           height: 100%;
-          display: block;
           object-fit: contain;
           object-position: center;
           padding: 6px;
+          display: block;
+        }
+
+        .btile__img img.img-cover {
+          object-fit: cover;
+          padding: 0;
         }
 
         .btile__text {
@@ -1001,19 +1134,20 @@ export default function BoardPage() {
         .btile__footer {
           display: flex;
           align-items: flex-start;
-          justify-content: flex-start;
+          justify-content: space-between;
           padding-top: 0;
           margin-top: -4px;
+          gap: 10px;
         }
 
-        .btile__interest {
+        .btile__interest{
           display: flex;
           flex-direction: column;
           gap: 4px;
           align-items: flex-start;
         }
 
-        .btile__interestCount {
+        .btile__interestCount{
           font-size: 11px;
           font-weight: 800;
           color: rgba(255,255,255,.62);
@@ -1021,7 +1155,16 @@ export default function BoardPage() {
           padding-left: 2px;
         }
 
-        .interested-count {
+        .btile__pct{
+          font-size: 11px;
+          font-weight: 900;
+          color: rgba(255,255,255,.70);
+          line-height: 1;
+          padding-top: 8px; /* aligns visually with count line */
+          white-space: nowrap;
+        }
+
+        .interested-count{
           font-size: 11px;
           font-weight: 800;
           color: rgba(255,255,255,.62);
@@ -1037,9 +1180,10 @@ export default function BoardPage() {
           color: #2ecc71;
           text-shadow: 0 6px 16px rgba(0,0,0,.6);
           pointer-events: none;
+          z-index: 2;
         }
 
-        .avatar-sm {
+        .avatar-sm{
           width: 18px !important;
           height: 18px !important;
           border-radius: 999px !important;
@@ -1047,27 +1191,6 @@ export default function BoardPage() {
           flex: 0 0 auto !important;
           border: 1px solid rgba(255,255,255,.12) !important;
           background: rgba(0,0,0,.25);
-        }
-
-        .interest-list {
-          margin-top: 10px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .interest-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 6px 0;
-          line-height: 1.1;
-        }
-
-        /* make sure avatars don't act like inline text that can "float up" */
-        .interest-row img,
-        .avatar-sm {
-          display: block !important;
         }
 
         @media (max-width: 1200px) {
