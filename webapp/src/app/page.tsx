@@ -1,10 +1,23 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import LoginButton from "@/components/LoginButton";
 import { useSession } from "@/hooks/useSession";
+import { supabase } from "@/lib/supabase";
 
 export default function Home() {
   const { session, loading } = useSession();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!session) return;
+    supabase
+      .from("app_admins")
+      .select("user_id")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+      .then(({ data }) => setIsAdmin(!!data));
+  }, [session]);
 
   if (loading) return <p style={{ padding: 40 }}>Loading...</p>;
 
@@ -36,19 +49,21 @@ export default function Home() {
               ) : (
                 <>
                   <h1 className="h1">Welcome back</h1>
-                  <p className="p">You’re signed in.</p>
+                  <p className="p">You're signed in.</p>
                   <div className="row" style={{ marginTop: 10 }}>
                     <a className="btn btn-primary" href="/team">Go to Team</a>
                     <a className="btn" href="/board">Go to Board</a>
-                    <a className="btn btn-ghost" href="/admin">Admin</a>
+                    {isAdmin && <a className="btn btn-ghost" href="/admin">Admin</a>}
                   </div>
                 </>
               )}
             </div>
 
-            <div style={{ marginTop: 20 }} className="alert">
-              Tip: As admin you can jump to any team board and manage claims.
-            </div>
+            {!session && (
+              <div style={{ marginTop: 20 }} className="alert">
+                Tip: Log in with Discord to join your team and start tracking tiles.
+              </div>
+            )}
           </div>
         </div>
       </div>
