@@ -285,7 +285,7 @@ export default function AdminPage() {
   }
 
   if (loading) return <p style={{ padding: 40 }}>Loading...</p>;
-  if (!session) return <p style={{ padding: 40 }}>Please log in.</p>;
+  if (!session) return null;
 
   if (!isAdmin) {
     return (

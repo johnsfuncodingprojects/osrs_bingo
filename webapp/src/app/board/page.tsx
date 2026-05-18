@@ -189,15 +189,22 @@ export default function BoardPage() {
           .eq("user_id", session.user.id)
           .maybeSingle();
         if (adminErr) throw adminErr;
-        setIsAdmin(!!adminRow);
+        const isAdminUser = !!adminRow;
+        setIsAdmin(isAdminUser);
+
+        // must be on at least one team to view any board (admins exempt)
+        const myTeams = await getMyTeams();
+        if (!isAdminUser && myTeams.length === 0) {
+          router.push("/team");
+          return;
+        }
 
         let tid: string | null = null;
         if (teamOverride) {
           tid = teamOverride;
-          setAdminViewing(!!adminRow);
+          setAdminViewing(isAdminUser);
         } else {
-          const teams = await getMyTeams();
-          tid = teams[0]?.id ?? null;
+          tid = myTeams[0]?.id ?? null;
           setAdminViewing(false);
         }
 
@@ -615,7 +622,10 @@ export default function BoardPage() {
   }
 
   if (loading) return <p style={{ padding: 40 }}>Loading...</p>;
-  if (!session) return <p style={{ padding: 40 }}>Please log in.</p>;
+  if (!session) {
+    if (typeof window !== "undefined") window.location.replace("/");
+    return null;
+  }
 
   const renderTile = (square: Square | null, key: string, variant: "normal" | "floating") => {
     if (!square) {
@@ -772,7 +782,7 @@ export default function BoardPage() {
 
           {!canWrite && !isAdmin && (
             <div className="alert" style={{ marginTop: 14 }}>
-              Viewing as guest — <a href="/team" style={{ color: "var(--brand-2)", fontWeight: 800 }}>join this team</a> with a join code to submit claims and track interest.
+              Viewing read-only — <a href="/team" style={{ color: "var(--brand-2)", fontWeight: 800 }}>join this team</a> with a join code to submit claims and track interest.
             </div>
           )}
 
@@ -914,7 +924,7 @@ export default function BoardPage() {
                 </>
               ) : (
                 <div className="alert" style={{ marginTop: 12 }}>
-                  You're viewing this board as a guest. <a href="/team" style={{ color: "var(--brand-2)", fontWeight: 800 }}>Join this team</a> with a join code to submit claims and track interest.
+                  You're viewing this board read-only. <a href="/team" style={{ color: "var(--brand-2)", fontWeight: 800 }}>Join this team</a> with a join code to submit claims and track interest.
                 </div>
               )}
 

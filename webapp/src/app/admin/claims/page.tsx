@@ -103,7 +103,7 @@ export default function AdminClaimsPage() {
   }
 
   if (loading) return <p style={{ padding: 40 }}>Loading...</p>;
-  if (!session) return <p style={{ padding: 40 }}>Please log in.</p>;
+  if (!session) return null;
   if (!isAdmin) return <p style={{ padding: 40 }}>{msg ?? "Admins only."}</p>;
 
   return (

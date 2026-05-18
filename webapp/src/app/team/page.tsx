@@ -327,7 +327,10 @@ export default function TeamPage() {
   };
 
   if (loading) return <p style={{ padding: 40 }}>Loading...</p>;
-  if (!session) return <p style={{ padding: 40 }}>Please log in.</p>;
+  if (!session) {
+    if (typeof window !== "undefined") window.location.replace("/");
+    return null;
+  }
 
   const myTeams = memberships
     .map((m) => ({ m, team: teamsById[m.team_id] }))
