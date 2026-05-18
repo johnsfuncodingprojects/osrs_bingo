@@ -242,6 +242,8 @@ export default function AdminPage() {
     }
   }
 
+  const [tilesTeamFilter, setTilesTeamFilter] = useState<string>("ALL");
+
   const membersByTeam = useMemo(() => {
     const g: Record<string, MemberRow[]> = {};
     for (const m of members) {
@@ -251,14 +253,32 @@ export default function AdminPage() {
     return g;
   }, [members]);
 
+  const squaresByTeam = useMemo(() => {
+    const g: Record<string, SquareRow[]> = {};
+    for (const s of squares) {
+      g[s.team_id] ??= [];
+      g[s.team_id].push(s);
+    }
+    return g;
+  }, [squares]);
+
   const claimsFiltered = useMemo(() => {
     if (selectedTeamId === "ALL") return claims;
     return claims.filter((c) => c.team_id === selectedTeamId);
   }, [claims, selectedTeamId]);
 
+  const tilesFiltered = useMemo(() => {
+    if (tilesTeamFilter === "ALL") return squares;
+    return squares.filter((s) => s.team_id === tilesTeamFilter);
+  }, [squares, tilesTeamFilter]);
+
   const teamsForDropdown = useMemo(() => {
     return [{ id: "ALL", name: "All teams" } as any].concat(teams.map((t) => ({ id: t.id, name: t.name })));
   }, [teams]);
+
+  const pendingCount = useMemo(() => claims.filter((c) => c.status === "pending").length, [claims]);
+  const completedTileCount = useMemo(() => squares.filter((s) => s.completed).length, [squares]);
+  const uniqueMemberCount = useMemo(() => new Set(members.map((m) => m.user_id)).size, [members]);
 
   function labelFor(id: string) {
     return formatUserLabel(id, profilesById[id]);
@@ -304,10 +324,9 @@ export default function AdminPage() {
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <h1 className="h1">Admin Console</h1>
-              <p className="p" style={{ marginTop: 6 }}>Control teams (tables), users, boards, and exports.</p>
+              <p className="p" style={{ marginTop: 6 }}>Manage teams, members, boards, and claims.</p>
             </div>
-
-            <div className="row" style={{ alignItems: "center" }}>
+            <div className="row">
               <select
                 className="input"
                 value={selectedTeamId}
@@ -315,23 +334,31 @@ export default function AdminPage() {
                 style={{ minWidth: 220 }}
               >
                 {teamsForDropdown.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
+                  <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-
               <button className="btn btn-primary" onClick={refreshAll} disabled={busy}>
-                {busy ? "Refreshing..." : "Refresh"}
+                {busy ? "Refreshing…" : "Refresh"}
               </button>
             </div>
           </div>
 
-          {msg && (
-            <div className="alert" style={{ marginTop: 14 }}>
-              {msg}
-            </div>
-          )}
+          {msg && <div className="alert" style={{ marginTop: 14 }}>{msg}</div>}
+
+          {/* Stats row */}
+          <div className="stats-row" style={{ marginTop: 16 }}>
+            {[
+              { label: "Teams", value: teams.length },
+              { label: "Members", value: uniqueMemberCount },
+              { label: "Pending claims", value: pendingCount, warn: pendingCount > 0 },
+              { label: "Tiles completed", value: completedTileCount },
+            ].map(({ label, value, warn }) => (
+              <div key={label} className="stat-card">
+                <div className="stat-value" style={warn ? { color: "var(--warn)" } : undefined}>{value}</div>
+                <div className="stat-label">{label}</div>
+              </div>
+            ))}
+          </div>
 
           {/* Create Team + Admin Management */}
           <div className="grid2" style={{ marginTop: 16 }}>
@@ -475,40 +502,45 @@ export default function AdminPage() {
 
             <div className="panel">
               <div className="panel-title">Teams overview</div>
-              <div className="tiny" style={{ marginTop: 6 }}>
-                Click a join code to copy. Open a team’s board directly.
-              </div>
+              <div className="tiny" style={{ marginTop: 6 }}>Click a join code to copy.</div>
 
               <div className="table" style={{ marginTop: 10 }}>
-                <div className="thead">
+                <div className="thead" style={{ gridTemplateColumns: "2fr 1fr 0.6fr 0.8fr 0.8fr" }}>
                   <div>Team</div>
                   <div>Join Code</div>
                   <div>Members</div>
+                  <div>Progress</div>
                   <div>Board</div>
                 </div>
 
                 {teams.map((t) => {
                   const memCount = (membersByTeam[t.id] ?? []).length;
+                  const teamSquares = squaresByTeam[t.id] ?? [];
+                  const done = teamSquares.filter((s) => s.completed).length;
+                  const total = teamSquares.length;
                   return (
-                    <div className="trow" key={t.id}>
+                    <div className="trow" key={t.id} style={{ gridTemplateColumns: "2fr 1fr 0.6fr 0.8fr 0.8fr" }}>
                       <div>
                         <div style={{ fontWeight: 900 }}>{t.name}</div>
-                        <div className="tiny mono">{t.id}</div>
+                        <div className="tiny mono">{t.id.slice(0, 8)}…</div>
                       </div>
-
                       <button
                         className="btn btn-ghost mono"
                         onClick={() => navigator.clipboard.writeText(t.join_code)}
-                        title="Copy join code"
+                        title="Click to copy"
                       >
                         {t.join_code}
                       </button>
-
                       <div className="tiny">{memCount}</div>
-
-                      <a className="btn" href={`/board?team=${t.id}`}>
-                        Open board
-                      </a>
+                      <div>
+                        <div style={{ fontWeight: 900, fontSize: 13 }}>{done}/{total}</div>
+                        {total > 0 && (
+                          <div className="progress-bar" style={{ marginTop: 4 }}>
+                            <div className="progress-fill" style={{ width: `${Math.round((done / total) * 100)}%` }} />
+                          </div>
+                        )}
+                      </div>
+                      <a className="btn" href={`/board?team=${t.id}`}>Open</a>
                     </div>
                   );
                 })}
@@ -546,57 +578,114 @@ export default function AdminPage() {
             </div>
 
             <div className="panel">
-              <div className="panel-title">Tiles status</div>
-              <div className="tiny" style={{ marginTop: 6 }}>
-                Completed tiles are those explicitly marked by admin.
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <div className="panel-title">Tiles status</div>
+                <select
+                  className="input"
+                  value={tilesTeamFilter}
+                  onChange={(e) => setTilesTeamFilter(e.target.value)}
+                  style={{ minWidth: 160, width: "auto" }}
+                >
+                  {teamsForDropdown.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
               </div>
 
-              <div className="list" style={{ marginTop: 10 }}>
-                {squares
-                  .filter((s) => selectedTeamId === "ALL" || s.team_id === selectedTeamId)
-                  .slice(0, 500)
-                  .map((s) => (
+              {tilesTeamFilter === "ALL" ? (
+                <div className="list" style={{ marginTop: 10 }}>
+                  {teams.map((t) => {
+                    const ts = squaresByTeam[t.id] ?? [];
+                    const done = ts.filter((s) => s.completed).length;
+                    return (
+                      <div className="list-row" key={t.id} style={{ cursor: "pointer" }} onClick={() => setTilesTeamFilter(t.id)}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 900 }}>{t.name}</div>
+                          <div className="progress-bar" style={{ marginTop: 6 }}>
+                            <div className="progress-fill" style={{ width: ts.length ? `${Math.round((done / ts.length) * 100)}%` : "0%" }} />
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right", minWidth: 60 }}>
+                          <div style={{ fontWeight: 900 }}>{done}/{ts.length}</div>
+                          <div className="tiny">completed</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {teams.length === 0 && <div className="tiny" style={{ padding: 12 }}>No teams yet.</div>}
+                </div>
+              ) : (
+                <div className="list" style={{ marginTop: 10 }}>
+                  {tilesFiltered.slice(0, 500).map((s) => (
                     <div className="list-row" key={s.id}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 900 }}>
-                          {s.title}
-                          {s.completed ? (
-                            <span className="badge badge-good" style={{ marginLeft: 8 }}>
-                              Completed
-                            </span>
-                          ) : null}
-                        </div>
+                        <div style={{ fontWeight: 900 }}>{s.title}</div>
                         <div className="tiny">{s.requirement}</div>
                       </div>
-                      <span className="tiny mono">{s.code}</span>
-                      <span className="tiny mono">{s.completed_at ? s.completed_at.slice(0, 10) : ""}</span>
+                      <span className="tiny mono" style={{ marginRight: 8 }}>{s.code}</span>
+                      {s.completed ? (
+                        <span className="badge badge-good">Done</span>
+                      ) : (
+                        <span className="badge">Pending</span>
+                      )}
                     </div>
                   ))}
-              </div>
+                  {tilesFiltered.length === 0 && <div className="tiny" style={{ padding: 12 }}>No tiles seeded for this team yet.</div>}
+                </div>
+              )}
             </div>
           </div>
 
           <div className="panel" style={{ marginTop: 16 }}>
-            <div className="panel-title">Claims feed</div>
-            <div className="tiny" style={{ marginTop: 6 }}>
-              Latest claims (filtered by team dropdown).
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div className="panel-title">Claims feed</div>
+                <div className="tiny" style={{ marginTop: 4 }}>Latest claims — filtered by team dropdown above.</div>
+              </div>
+              {pendingCount > 0 && (
+                <a className="btn btn-primary" href="/admin/claims" style={{ whiteSpace: "nowrap" }}>
+                  Review {pendingCount} pending
+                </a>
+              )}
             </div>
 
             <div className="list" style={{ marginTop: 10 }}>
-              {claimsFiltered.slice(0, 200).map((c) => (
-                <div className="list-row" key={c.id}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 900 }}>
-                      {labelFor(c.user_id)} <span className="badge">{c.status}</span>
+              {claimsFiltered.length === 0 ? (
+                <div className="tiny" style={{ padding: 12 }}>No claims yet.</div>
+              ) : (
+                claimsFiltered.slice(0, 200).map((c) => (
+                  <div className="list-row" key={c.id}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 900 }}>
+                        {labelFor(c.user_id)}
+                        <span
+                          className="badge"
+                          style={{
+                            marginLeft: 8,
+                            borderColor: c.status === "approved"
+                              ? "rgba(46,204,113,0.4)"
+                              : c.status === "rejected"
+                              ? "rgba(231,76,60,0.4)"
+                              : "rgba(243,156,18,0.4)",
+                            color: c.status === "approved"
+                              ? "var(--good)"
+                              : c.status === "rejected"
+                              ? "var(--bad)"
+                              : "var(--warn)",
+                          }}
+                        >
+                          {c.status}
+                        </span>
+                      </div>
+                      <div className="tiny mono">
+                        square: {c.square_id.slice(0, 8)}… • {c.created_at?.slice(0, 19) ?? ""}
+                        {c.reviewed_at ? ` • reviewed ${c.reviewed_at.slice(0, 19)}` : ""}
+                      </div>
                     </div>
-                    <div className="tiny mono">
-                      square: {c.square_id.slice(0, 8)}… • {c.created_at?.slice(0, 19) ?? ""}
-                      {c.reviewed_at ? ` • reviewed ${c.reviewed_at.slice(0, 19)}` : ""}
-                    </div>
+                    <span className="tiny mono">{c.team_id ? c.team_id.slice(0, 8) + "…" : ""}</span>
                   </div>
-                  <span className="tiny mono">{c.team_id ? c.team_id.slice(0, 8) + "…" : ""}</span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
@@ -605,6 +694,45 @@ export default function AdminPage() {
       </main>
 
       <style jsx global>{`
+        .stats-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 12px;
+        }
+        @media (max-width: 700px) {
+          .stats-row { grid-template-columns: repeat(2, 1fr); }
+        }
+        .stat-card {
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 14px 16px;
+          background: rgba(255,255,255,0.02);
+        }
+        .stat-value {
+          font-size: 28px;
+          font-weight: 900;
+          line-height: 1;
+        }
+        .stat-label {
+          margin-top: 4px;
+          font-size: 12px;
+          color: var(--muted2);
+          font-weight: 700;
+        }
+
+        .progress-bar {
+          height: 4px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.08);
+          overflow: hidden;
+        }
+        .progress-fill {
+          height: 100%;
+          border-radius: 999px;
+          background: var(--good);
+          transition: width 0.3s ease;
+        }
+
         .grid2 {
           display: grid;
           grid-template-columns: 1fr 1fr;
