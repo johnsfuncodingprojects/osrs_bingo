@@ -30,6 +30,9 @@ export default function TeamPage() {
   const router = useRouter();
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [previewAsMember, setPreviewAsMember] = useState(false);
+
+  const effectiveIsAdmin = isAdmin && !previewAsMember;
 
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [teamsById, setTeamsById] = useState<Record<string, Team>>({});
@@ -224,7 +227,7 @@ export default function TeamPage() {
   const createTeam = async () => {
     if (!session) return;
 
-    if (!isAdmin) {
+    if (!effectiveIsAdmin) {
       setMsg("Only admins can create teams.");
       return;
     }
@@ -329,20 +332,22 @@ export default function TeamPage() {
             <span style={{ width: 10, height: 10, borderRadius: 999, background: "var(--brand)" }} />
             OSRS Bingo
             <span className="badge">Team</span>
+            {previewAsMember && <span className="badge" style={{ borderColor: "rgba(243,156,18,0.5)", color: "rgba(243,156,18,0.9)" }}>Member preview</span>}
           </div>
           <div className="row">
-            <a className="btn btn-ghost" href="/team">
-              Team
-            </a>
-            <a className="btn btn-ghost" href="/board">
-              Board
-            </a>
-            <a className="btn btn-ghost" href="/admin">
-              Admin
-            </a>
-            <span className="pill">
-              Signed in as <b>{displayName}</b>
-            </span>
+            {isAdmin && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => setPreviewAsMember(p => !p)}
+                title="Toggle between admin and member view"
+              >
+                {previewAsMember ? "Exit preview" : "Preview as member"}
+              </button>
+            )}
+            <a className="btn btn-ghost" href="/team">Team</a>
+            <a className="btn btn-ghost" href="/board">Board</a>
+            <a className="btn btn-ghost" href="/admin">Admin</a>
+            <span className="pill">Signed in as <b>{displayName}</b></span>
           </div>
         </div>
       </div>
@@ -502,7 +507,7 @@ export default function TeamPage() {
 
           {/* Create / Join */}
           <div className="split" style={{ marginTop: 16 }}>
-            {isAdmin && (
+            {effectiveIsAdmin && (
               <div className="card">
                 <div className="card-inner">
                   <div className="row" style={{ justifyContent: "space-between" }}>
@@ -544,7 +549,7 @@ export default function TeamPage() {
                   </button>
                 </div>
 
-                {!isAdmin && (
+                {!effectiveIsAdmin && (
                   <p className="p" style={{ marginTop: 12, fontSize: 13 }}>
                     Need a team created? Ask an admin and get a join code.
                   </p>

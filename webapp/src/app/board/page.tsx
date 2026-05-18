@@ -123,6 +123,9 @@ export default function BoardPage() {
   const [teamId, setTeamId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminViewing, setAdminViewing] = useState(false);
+  const [previewAsMember, setPreviewAsMember] = useState(false);
+
+  const effectiveIsAdmin = isAdmin && !previewAsMember;
 
   const [squares, setSquares] = useState<Square[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -434,7 +437,7 @@ export default function BoardPage() {
   // - When marking completed: force progress_pct to 100
   // - When unmarking: force progress_pct to 0
   async function adminMarkCompleted(squareId: string, completed: boolean) {
-    if (!isAdmin) return;
+    if (!effectiveIsAdmin) return;
 
     setBusy(true);
     setMsg(null);
@@ -466,7 +469,7 @@ export default function BoardPage() {
   // - If admin sets progress below 100, we DO NOT auto-uncomplete (completion remains explicit).
   async function saveSquareEdits() {
     if (!openSquare || !teamId) return;
-    if (!isAdmin) {
+    if (!effectiveIsAdmin) {
       setMsg("Admins only.");
       return;
     }
@@ -515,7 +518,7 @@ export default function BoardPage() {
 
   async function applyDefaultsToThisTeam() {
     if (!session || !teamId) return;
-    if (!isAdmin) {
+    if (!effectiveIsAdmin) {
       setMsg("Admins only.");
       return;
     }
@@ -554,7 +557,7 @@ export default function BoardPage() {
 
   async function seedIfEmpty() {
     if (!session || !teamId) return;
-    if (!isAdmin) {
+    if (!effectiveIsAdmin) {
       setMsg("Admins only.");
       return;
     }
@@ -705,17 +708,21 @@ export default function BoardPage() {
             OSRS Bingo
             <span className="badge">Board</span>
             {adminViewing && <span className="badge">Admin view</span>}
+            {previewAsMember && <span className="badge" style={{ borderColor: "rgba(243,156,18,0.5)", color: "rgba(243,156,18,0.9)" }}>Member preview</span>}
           </div>
           <div className="row">
-            <a className="btn btn-ghost" href="/team">
-              Team
-            </a>
-            <a className="btn btn-ghost" href="/admin">
-              Admin
-            </a>
-            <a className="btn btn-ghost" href="/admin/claims">
-              Claims
-            </a>
+            {isAdmin && (
+              <button
+                className={`btn btn-ghost`}
+                onClick={() => setPreviewAsMember(p => !p)}
+                title="Toggle between admin and member view"
+              >
+                {previewAsMember ? "Exit preview" : "Preview as member"}
+              </button>
+            )}
+            <a className="btn btn-ghost" href="/team">Team</a>
+            <a className="btn btn-ghost" href="/admin">Admin</a>
+            <a className="btn btn-ghost" href="/admin/claims">Claims</a>
           </div>
         </div>
       </div>
@@ -735,7 +742,7 @@ export default function BoardPage() {
                 Refresh
               </button>
 
-              {isAdmin && (
+              {effectiveIsAdmin && (
                 <>
                   <button className="btn" onClick={applyDefaultsToThisTeam} disabled={busy || !teamId}>
                     Apply defaults
@@ -912,7 +919,7 @@ export default function BoardPage() {
                             View proof
                           </button>
 
-                          {isAdmin && c.status === "pending" && (
+                          {effectiveIsAdmin && c.status === "pending" && (
                             <>
                               <button className="btn btn-primary" onClick={() => adminReviewClaim(c.id, "approved")} disabled={busy}>
                                 Approve
@@ -929,7 +936,7 @@ export default function BoardPage() {
                 )}
               </div>
 
-              {isAdmin && (
+              {effectiveIsAdmin && (
                 <>
                   <div className="hr" />
                   <h2 className="h2">Admin controls</h2>
