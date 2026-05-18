@@ -122,10 +122,12 @@ export default function BoardPage() {
 
   const [teamId, setTeamId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isMember, setIsMember] = useState(false);
   const [adminViewing, setAdminViewing] = useState(false);
   const [previewAsMember, setPreviewAsMember] = useState(false);
 
   const effectiveIsAdmin = isAdmin && !previewAsMember;
+  const canWrite = isMember || effectiveIsAdmin;
 
   const [squares, setSquares] = useState<Square[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -190,9 +192,9 @@ export default function BoardPage() {
         setIsAdmin(!!adminRow);
 
         let tid: string | null = null;
-        if (teamOverride && !!adminRow) {
+        if (teamOverride) {
           tid = teamOverride;
-          setAdminViewing(true);
+          setAdminViewing(!!adminRow);
         } else {
           const teams = await getMyTeams();
           tid = teams[0]?.id ?? null;
@@ -205,6 +207,15 @@ export default function BoardPage() {
         }
 
         setTeamId(tid);
+
+        const { data: memberRow } = await supabase
+          .from("team_members")
+          .select("user_id")
+          .eq("team_id", tid)
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+        setIsMember(!!memberRow);
+
         await loadTeamData(tid);
       } catch (e: any) {
         setMsg(e.message ?? "Failed to load board.");
@@ -324,7 +335,7 @@ export default function BoardPage() {
   }
 
   async function toggleInterest(squareId: string) {
-    if (!session) return;
+    if (!session || !canWrite) return;
     setInterestBusyId(squareId);
     setMsg(null);
 
@@ -378,7 +389,7 @@ export default function BoardPage() {
   }
 
   async function submitClaim() {
-    if (!openSquare || !session) return;
+    if (!openSquare || !session || !canWrite) return;
 
     const input = document.createElement("input");
     input.type = "file";
@@ -674,16 +685,18 @@ export default function BoardPage() {
               {square.progress_pct ?? 0}% complete
             </div>
 
-            <button
-              type="button"
-              className={`workbtn ${me ? "workbtn--on" : ""}`}
-              onClick={() => toggleInterest(square.id)}
-              disabled={interestBusyId === square.id}
-              title="Toggle interest in this tile"
-            >
-              <span className="workbtn-label">Interested</span>
-              <span className="workbtn-check" aria-hidden="true">{me ? "✓" : ""}</span>
-            </button>
+            {canWrite && (
+              <button
+                type="button"
+                className={`workbtn ${me ? "workbtn--on" : ""}`}
+                onClick={() => toggleInterest(square.id)}
+                disabled={interestBusyId === square.id}
+                title="Toggle interest in this tile"
+              >
+                <span className="workbtn-label">Interested</span>
+                <span className="workbtn-check" aria-hidden="true">{me ? "✓" : ""}</span>
+              </button>
+            )}
 
             <div className="btile__interestCount" title="Number of interested users">
               {interested.length} interested
@@ -757,6 +770,12 @@ export default function BoardPage() {
 
           {msg && <div className="alert" style={{ marginTop: 14 }}>{msg}</div>}
 
+          {!canWrite && !isAdmin && (
+            <div className="alert" style={{ marginTop: 14 }}>
+              Viewing as guest — <a href="/team" style={{ color: "var(--brand-2)", fontWeight: 800 }}>join this team</a> with a join code to submit claims and track interest.
+            </div>
+          )}
+
           {/* Floating row: 7 columns, tile in col 1 and col 7 */}
           <div className="bgrid bgrid--floating" style={{ marginTop: 18 }}>
             {renderTile(floatingLeft, "float-left", "floating")}
@@ -828,16 +847,18 @@ export default function BoardPage() {
               <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
                 <h2 className="h2">Interested ({openInterested.length})</h2>
 
-                <button
-                  type="button"
-                  className={`workbtn ${myInterested(openSquare.id) ? "workbtn--on" : ""}`}
-                  onClick={() => toggleInterest(openSquare.id)}
-                  disabled={interestBusyId === openSquare.id}
-                  title="Toggle interest in this tile"
-                >
-                  <span className="workbtn-label">Interested</span>
-                  <span className="workbtn-check" aria-hidden="true">{myInterested(openSquare.id) ? "✓" : ""}</span>
-                </button>
+                {canWrite && (
+                  <button
+                    type="button"
+                    className={`workbtn ${myInterested(openSquare.id) ? "workbtn--on" : ""}`}
+                    onClick={() => toggleInterest(openSquare.id)}
+                    disabled={interestBusyId === openSquare.id}
+                    title="Toggle interest in this tile"
+                  >
+                    <span className="workbtn-label">Interested</span>
+                    <span className="workbtn-check" aria-hidden="true">{myInterested(openSquare.id) ? "✓" : ""}</span>
+                  </button>
+                )}
               </div>
 
               <p className="p" style={{ marginTop: 6 }}>
@@ -865,9 +886,6 @@ export default function BoardPage() {
               <div className="hr" />
 
               <h2 className="h2">Submit proof</h2>
-              <p className="p" style={{ marginTop: 6 }}>
-                Upload a screenshot as proof. Admins approve/reject claims, and separately mark the square completed.
-              </p>
 
               {openSquare.completed && (
                 <div className="alert alert-good" style={{ marginTop: 12 }}>
@@ -875,21 +893,30 @@ export default function BoardPage() {
                 </div>
               )}
 
-              <div className="row" style={{ marginTop: 12 }}>
-                <button className="btn btn-primary" onClick={submitClaim} disabled={claimBusy}>
-                  {claimBusy ? "Uploading..." : "Upload proof + submit"}
-                </button>
-
-                {proofSignedUrl && (
-                  <a className="btn" href={proofSignedUrl} target="_blank" rel="noreferrer">
-                    View my latest proof
-                  </a>
-                )}
-
-                <button className="btn btn-ghost" onClick={() => loadClaimsForSquare(openSquare.id)}>
-                  Refresh claims
-                </button>
-              </div>
+              {canWrite ? (
+                <>
+                  <p className="p" style={{ marginTop: 6 }}>
+                    Upload a screenshot as proof. Admins approve/reject claims, and separately mark the square completed.
+                  </p>
+                  <div className="row" style={{ marginTop: 12 }}>
+                    <button className="btn btn-primary" onClick={submitClaim} disabled={claimBusy}>
+                      {claimBusy ? "Uploading..." : "Upload proof + submit"}
+                    </button>
+                    {proofSignedUrl && (
+                      <a className="btn" href={proofSignedUrl} target="_blank" rel="noreferrer">
+                        View my latest proof
+                      </a>
+                    )}
+                    <button className="btn btn-ghost" onClick={() => loadClaimsForSquare(openSquare.id)}>
+                      Refresh claims
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="alert" style={{ marginTop: 12 }}>
+                  You're viewing this board as a guest. <a href="/team" style={{ color: "var(--brand-2)", fontWeight: 800 }}>Join this team</a> with a join code to submit claims and track interest.
+                </div>
+              )}
 
               <div className="claims" style={{ marginTop: 12 }}>
                 {claims.length === 0 ? (

@@ -38,10 +38,11 @@ export default function TeamPage() {
   const [teamsById, setTeamsById] = useState<Record<string, Team>>({});
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
 
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
+
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
 
-  // ✅ RSN
   const [myRsn, setMyRsn] = useState("");
 
   const [busy, setBusy] = useState(false);
@@ -103,7 +104,6 @@ export default function TeamPage() {
   // ---------- load my profile (RSN) ----------
   useEffect(() => {
     if (!session) return;
-
     (async () => {
       try {
         const { data, error } = await supabase.from("profiles").select("id,rsn").eq("id", session.user.id).maybeSingle();
@@ -114,6 +114,16 @@ export default function TeamPage() {
         setMyRsn("");
       }
     })();
+  }, [session]);
+
+  // ---------- load all teams for browsing ----------
+  useEffect(() => {
+    if (!session) return;
+    supabase
+      .from("teams")
+      .select("id,name,join_code,created_at")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setAllTeams((data ?? []) as Team[]));
   }, [session]);
 
   async function saveRsn() {
@@ -557,6 +567,35 @@ export default function TeamPage() {
               </div>
             </div>
           </div>
+
+          {/* Other teams — view-only for non-members */}
+          {(() => {
+            const myIds = new Set(memberships.map((m) => m.team_id));
+            const others = allTeams.filter((t) => !myIds.has(t.id));
+            if (others.length === 0) return null;
+            return (
+              <div className="card" style={{ marginTop: 16 }}>
+                <div className="card-inner">
+                  <h2 className="h2">Other teams</h2>
+                  <p className="p" style={{ marginTop: 6 }}>
+                    View any team's board. Join a team with their code to submit claims.
+                  </p>
+                  <div className="teamTable" style={{ marginTop: 14 }}>
+                    <div className="teamHead" style={{ gridTemplateColumns: "1fr auto" }}>
+                      <div>Team</div>
+                      <div>Board</div>
+                    </div>
+                    {others.map((t) => (
+                      <div className="teamRow" key={t.id} style={{ gridTemplateColumns: "1fr auto" }}>
+                        <div className="teamName">{t.name}</div>
+                        <a className="btn btn-ghost" href={`/board?team=${t.id}`}>View board</a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           <style jsx global>{`
             .tiny {
