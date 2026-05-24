@@ -24,3 +24,19 @@ export async function getSignedClaimUrl(path: string, expiresInSec = 60 * 60) {
   if (error) throw error;
   return data.signedUrl;
 }
+
+export async function uploadTileImage(code: string, file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("Image files only.");
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `${code}.${ext}`;
+
+  const { error } = await supabase.storage.from("tile-images").upload(path, file, {
+    upsert: true,
+    contentType: file.type,
+    cacheControl: "86400",
+  });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from("tile-images").getPublicUrl(path);
+  return data.publicUrl;
+}

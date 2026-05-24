@@ -1,8 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import csv
+import io
 import jwt
 import os
+import httpx
 from supabase import create_client, Client
 from uuid import UUID
 from datetime import datetime, timezone
@@ -23,6 +26,9 @@ app.add_middleware(
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 JWT_SECRET = os.environ["SUPABASE_JWT_SECRET"]
+
+SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1BQGJ9-2YI2F5bB_5h5Ng_07evRvlSIWNe8gZoUgzfZg")
+SHEET_GID = os.environ.get("GOOGLE_SHEET_GID", "1106581426")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -166,3 +172,59 @@ def approve_claim(data: ClaimApprove, user_id: str = Depends(get_user_id)):
     }).eq("id", str(square_id)).execute()
 
     return {"status": "ok"}
+
+
+@app.post("/admin/sync-tiles")
+def sync_tiles(user_id: str = Depends(get_user_id)):
+    assert_app_admin(user_id)
+
+    url = (
+        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+        f"/export?format=csv&gid={SHEET_GID}"
+    )
+    try:
+        resp = httpx.get(url, timeout=20, follow_redirects=True)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Sheet fetch error: {e}")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Sheet fetch failed: {resp.status_code}")
+
+    reader = csv.reader(io.StringIO(resp.text))
+    tiles: list[dict] = []
+    for row in reader:
+        if len(row) < 8:
+            continue
+        try:
+            num = int(row[4])
+        except (ValueError, TypeError):
+            continue
+        if 1 <= num <= 30:
+            tiles.append({
+                "code": f"S{num:02d}",
+                "title": row[6].strip(),
+                "requirement": row[7].strip(),
+                "description": row[5].strip(),
+            })
+
+    if not tiles:
+        raise HTTPException(status_code=422, detail="No tiles parsed from sheet")
+
+    teams_res = supabase.table("teams").select("id").execute()
+    teams = teams_res.data or []
+
+    upserted = 0
+    for team in teams:
+        rows = [{"team_id": team["id"], **t} for t in tiles]
+        supabase.table("squares").upsert(
+            rows,
+            on_conflict="team_id,code",
+        ).execute()
+        upserted += len(rows)
+
+    return {
+        "status": "ok",
+        "tiles_parsed": len(tiles),
+        "rows_upserted": upserted,
+        "teams": len(teams),
+    }

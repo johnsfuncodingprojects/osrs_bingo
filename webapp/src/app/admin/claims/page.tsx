@@ -120,6 +120,7 @@ export default function AdminClaimsPage() {
             <a className="btn btn-ghost" href="/admin">Admin</a>
             <a className="btn btn-ghost" href="/team">Team</a>
             <a className="btn btn-ghost" href="/board">Board</a>
+            <a className="btn btn-ghost" href="/leaderboard">Leaderboard</a>
             <button className="btn btn-primary" onClick={refresh} disabled={busy}>
               {busy ? "Refreshing..." : "Refresh"}
             </button>

@@ -744,6 +744,7 @@ export default function BoardPage() {
               </button>
             )}
             <a className="btn btn-ghost" href="/team">Team</a>
+            <a className="btn btn-ghost" href="/leaderboard">Leaderboard</a>
             {effectiveIsAdmin && <a className="btn btn-ghost" href="/admin">Admin</a>}
             {effectiveIsAdmin && <a className="btn btn-ghost" href="/admin/claims">Claims</a>}
           </div>

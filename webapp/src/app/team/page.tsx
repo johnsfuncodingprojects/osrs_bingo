@@ -359,6 +359,7 @@ export default function TeamPage() {
             )}
             <a className="btn btn-ghost" href="/team">Team</a>
             <a className="btn btn-ghost" href="/board">Board</a>
+            <a className="btn btn-ghost" href="/leaderboard">Leaderboard</a>
             {effectiveIsAdmin && <a className="btn btn-ghost" href="/admin">Admin</a>}
             <span className="pill">Signed in as <b>{displayName}</b></span>
           </div>

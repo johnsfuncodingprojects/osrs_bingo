@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { uploadTileImage } from "@/lib/storage";
 import { useSession } from "@/hooks/useSession";
 import { useRouter } from "next/navigation";
 
@@ -242,6 +243,78 @@ export default function AdminPage() {
     }
   }
 
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  async function syncTiles() {
+    const accessToken = (await supabase.auth.getSession()).data.session?.access_token;
+    if (!accessToken) return;
+
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch("/api/sync-tiles", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const text = await res.text();
+      let json: any = {};
+      try { json = text ? JSON.parse(text) : {}; } catch { /* non-JSON body */ }
+      if (!res.ok) throw new Error(json.error ?? text.slice(0, 120) ?? res.statusText);
+      const progressSummary = (json.progress_synced ?? [])
+        .filter((r: any) => r.matched)
+        .map((r: any) => `${r.teamName}: ${r.tilesUpdated} tiles`)
+        .join(", ");
+      setSyncMsg(
+        `Synced ${json.tiles_parsed} tile definitions across ${json.teams_in_db} team(s).` +
+        (progressSummary ? ` Progress updated — ${progressSummary}.` : "")
+      );
+      await refreshAll();
+    } catch (e: any) {
+      setSyncMsg(`Sync failed: ${e.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  const [tileImgCode, setTileImgCode] = useState("S01");
+  const [tileImgFile, setTileImgFile] = useState<File | null>(null);
+  const [tileImgMsg, setTileImgMsg] = useState<string | null>(null);
+  const [tileImgBusy, setTileImgBusy] = useState(false);
+
+  async function uploadTileImg() {
+    if (!tileImgFile) { setTileImgMsg("Pick a file first."); return; }
+    setTileImgBusy(true);
+    setTileImgMsg(null);
+    try {
+      const publicUrl = await uploadTileImage(tileImgCode, tileImgFile);
+      const { error } = await supabase
+        .from("squares")
+        .update({ image_url: publicUrl })
+        .eq("code", tileImgCode);
+      if (error) throw error;
+      setTileImgMsg(`Image set for ${tileImgCode} across all teams.`);
+      setTileImgFile(null);
+      await refreshAll();
+    } catch (e: any) {
+      setTileImgMsg(e.message ?? "Upload failed.");
+    } finally {
+      setTileImgBusy(false);
+    }
+  }
+
+  const uniqueTileCodes = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { code: string; title: string }[] = [];
+    for (const s of squares) {
+      if (!seen.has(s.code)) {
+        seen.add(s.code);
+        result.push({ code: s.code, title: s.title });
+      }
+    }
+    return result.sort((a, b) => a.code.localeCompare(b.code));
+  }, [squares]);
+
   const [tilesTeamFilter, setTilesTeamFilter] = useState<string>("ALL");
 
   const membersByTeam = useMemo(() => {
@@ -306,15 +379,10 @@ export default function AdminPage() {
             <span className="badge">Admin</span>
           </div>
           <div className="row">
-            <a className="btn btn-ghost" href="/board">
-              Board
-            </a>
-            <a className="btn btn-ghost" href="/team">
-              Team
-            </a>
-            <a className="btn btn-ghost" href="/admin/claims">
-              Claims
-            </a>
+            <a className="btn btn-ghost" href="/board">Board</a>
+            <a className="btn btn-ghost" href="/team">Team</a>
+            <a className="btn btn-ghost" href="/leaderboard">Leaderboard</a>
+            <a className="btn btn-ghost" href="/admin/claims">Claims</a>
           </div>
         </div>
       </div>
@@ -425,6 +493,92 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Sync tiles */}
+          <div className="panel" style={{ marginTop: 16 }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <div className="panel-title">Sync tiles from Google Sheet</div>
+                <div className="tiny" style={{ marginTop: 4, maxWidth: 520 }}>
+                  Fetches the Summary Board from the clan Google Sheet and upserts tile titles + requirements for
+                  all teams. Completed status and progress are preserved.
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={syncTiles} disabled={syncing || busy}>
+                {syncing ? "Syncing…" : "Sync tiles"}
+              </button>
+            </div>
+            {syncMsg && (
+              <div
+                className="tiny"
+                style={{
+                  marginTop: 10,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: syncMsg.startsWith("Sync failed")
+                    ? "rgba(231,76,60,0.12)"
+                    : "rgba(46,204,113,0.1)",
+                  color: syncMsg.startsWith("Sync failed") ? "var(--bad)" : "var(--good)",
+                }}
+              >
+                {syncMsg}
+              </div>
+            )}
+          </div>
+
+          {/* Tile images */}
+          <div className="panel" style={{ marginTop: 16 }}>
+            <div className="panel-title">Tile default images</div>
+            <div className="tiny" style={{ marginTop: 4, marginBottom: 12 }}>
+              Upload one image per tile code — applies to all teams. Never overwritten by sync.
+            </div>
+            <div className="row" style={{ flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+              <select
+                className="input"
+                value={tileImgCode}
+                onChange={(e) => setTileImgCode(e.target.value)}
+                style={{ minWidth: 240 }}
+              >
+                {uniqueTileCodes.length === 0
+                  ? Array.from({ length: 30 }, (_, i) => `S${String(i + 1).padStart(2, "0")}`).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))
+                  : uniqueTileCodes.map(({ code, title }) => (
+                      <option key={code} value={code}>{code} — {title}</option>
+                    ))}
+              </select>
+              <label className="btn" style={{ cursor: "pointer", position: "relative" }}>
+                {tileImgFile ? tileImgFile.name : "Choose image"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                  onChange={(e) => setTileImgFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              <button className="btn btn-primary" onClick={uploadTileImg} disabled={tileImgBusy || !tileImgFile}>
+                {tileImgBusy ? "Uploading…" : "Upload"}
+              </button>
+            </div>
+            {tileImgMsg && (
+              <div
+                className="tiny"
+                style={{
+                  marginTop: 10,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: tileImgMsg.includes("failed") || tileImgMsg.includes("error")
+                    ? "rgba(231,76,60,0.12)"
+                    : "rgba(46,204,113,0.1)",
+                  color: tileImgMsg.includes("failed") || tileImgMsg.includes("error")
+                    ? "var(--bad)"
+                    : "var(--good)",
+                }}
+              >
+                {tileImgMsg}
+              </div>
+            )}
           </div>
 
           {/* Quick actions */}
