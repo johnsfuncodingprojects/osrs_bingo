@@ -194,7 +194,7 @@ export default function BoardPage() {
 
         // must be on at least one team to view any board (admins exempt)
         const myTeams = await getMyTeams();
-        if (!isAdminUser && myTeams.length === 0) {
+        if (!isAdminUser && myTeams.length === 0 && !teamOverride) {
           router.push("/team");
           return;
         }
@@ -632,17 +632,16 @@ export default function BoardPage() {
       return (
         <button
           key={key}
-          className={`btile ${variant === "floating" ? "btile--floating" : ""} btile--empty btile--noimg`}
+          className={`btile btile--empty${variant === "floating" ? " btile--floating" : ""}`}
           onClick={() => setMsg("Tile not seeded yet. Admin must seed/apply defaults.")}
         >
-          <div className="btile__text btile__text--noimg">
+          <div className="btile__overlay" />
+          <div className="btile__body">
             <div className="btile__title">Unassigned</div>
             <div className="btile__req">Admin hasn’t seeded this tile.</div>
+            <div className="btile__meta"><span className="btile__pct-label">0%</span></div>
           </div>
-
-          <div className="btile__footer" onClick={(e) => e.stopPropagation()}>
-            <span className="interested-count">0 interested</span>
-          </div>
+          <div className="btile__bar" />
         </button>
       );
     }
@@ -651,9 +650,7 @@ export default function BoardPage() {
     const interested = interestedUsers(square.id);
     const me = myInterested(square.id);
     const hasImg = !!square.image_url;
-
     const pct = clampPct(square.progress_pct ?? 0);
-    const showProgress = !done && pct > 0 && pct < 100;
 
     return (
       <button
@@ -662,59 +659,44 @@ export default function BoardPage() {
           "btile",
           variant === "floating" ? "btile--floating" : "",
           done ? "btile--done" : "",
-          showProgress ? "btile--progress" : "",
-          !hasImg ? "btile--noimg" : "",
-        ].join(" ")}
-        style={{ ["--pct" as any]: `${pct}%` }}
+        ].filter(Boolean).join(" ")}
         onClick={() => setOpenSquareId(square.id)}
       >
-        {/* Only show the image section when an image exists */}
-        {hasImg ? (
-          <div className="btile__img">
-            <img
-              src={square.image_url!}
-              alt={square.title}
-              onLoad={(e) => {
-                // optional: flip to cover for very wide images (looks better)
-                const img = e.currentTarget;
-                const ratio = img.naturalWidth / (img.naturalHeight || 1);
-                img.classList.toggle("img-cover", ratio > 1.25);
-              }}
-            />
-          </div>
-        ) : null}
+        {hasImg && <img src={square.image_url!} alt="" className="btile__bgimg" />}
+        <div className="btile__overlay" />
+        {done && <div className="btile__done-tint" />}
 
-        <div className={`btile__text ${!hasImg ? "btile__text--noimg" : ""}`}>
+        <div className="btile__topbar" onClick={(e) => e.stopPropagation()}>
+          {canWrite ? (
+            <button
+              type="button"
+              className={`btile__star${me ? " btile__star--on" : ""}`}
+              onClick={() => toggleInterest(square.id)}
+              disabled={interestBusyId === square.id}
+              title={me ? "Remove interest" : "Mark interested"}
+            >
+              {me ? "★" : "☆"}{interested.length > 0 ? ` ${interested.length}` : ""}
+            </button>
+          ) : interested.length > 0 ? (
+            <span className="btile__star btile__star--readonly">★ {interested.length}</span>
+          ) : null}
+        </div>
+
+        <div className="btile__body">
           <div className="btile__title">{square.title}</div>
           <div className="btile__req">{square.requirement}</div>
-        </div>
-
-        <div className="btile__footer" onClick={(e) => e.stopPropagation()}>
-          <div className="btile__interest">
-            <div className="btile__progressLine" title="Tile progress">
-              {square.progress_pct ?? 0}% complete
-            </div>
-
-            {canWrite && (
-              <button
-                type="button"
-                className={`workbtn ${me ? "workbtn--on" : ""}`}
-                onClick={() => toggleInterest(square.id)}
-                disabled={interestBusyId === square.id}
-                title="Toggle interest in this tile"
-              >
-                <span className="workbtn-label">Interested</span>
-                <span className="workbtn-check" aria-hidden="true">{me ? "✓" : ""}</span>
-              </button>
-            )}
-
-            <div className="btile__interestCount" title="Number of interested users">
-              {interested.length} interested
-            </div>
+          <div className="btile__meta">
+            <span className="btile__pct-label">{pct}%</span>
+            {done && <span className="btile__badge-done">✓ Done</span>}
           </div>
         </div>
 
-        {done && <div className="btile__check">✓</div>}
+        <div className="btile__bar">
+          <div
+            className={`btile__bar-fill${done ? " btile__bar-fill--done" : ""}`}
+            style={{ width: done ? "100%" : `${pct}%` }}
+          />
+        </div>
       </button>
     );
   };
@@ -1060,180 +1042,166 @@ export default function BoardPage() {
         .bgrid {
           display: grid;
           grid-template-columns: repeat(7, minmax(0, 1fr));
-          gap: 12px;
+          gap: 8px;
         }
-
-        .btile--floating { height: 160px; }
-        .bspacer { height: 160px; }
         .bgrid--main { padding-bottom: 40px; }
+        .btile--floating { height: 165px; }
+        .bspacer { height: 165px; }
 
         .btile {
           position: relative;
-          height: 176px;
-          border-radius: 16px;
+          height: 185px;
+          border-radius: 14px;
           border: 1px solid rgba(255,255,255,0.10);
-          background: linear-gradient(180deg, rgba(30,32,38,.92), rgba(18,20,24,.96));
-          padding: 10px;
-          text-align: left;
+          background: linear-gradient(180deg, rgba(28,30,36,.96), rgba(16,18,22,.99));
+          overflow: hidden;
           cursor: pointer;
-
-          display: grid;
-          grid-template-rows: 70px 1fr 64px; /* img / text / footer (FIX: fixed footer height) */
-          gap: 8px;
-
+          text-align: left;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
           transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
         }
         .btile:hover {
           transform: translateY(-2px);
-          border-color: rgba(255,255,255,0.18);
-          box-shadow: 0 10px 25px rgba(0,0,0,.45);
+          border-color: rgba(255,255,255,0.22);
+          box-shadow: 0 8px 24px rgba(0,0,0,.5);
         }
+        .btile--done { border-color: rgba(46,204,113,.4); }
+        .btile--empty { opacity: 0.55; cursor: default; }
 
-        /* ✅ progress fill (yellow) */
-        .btile--progress::before {
-          content: "";
+        .btile__bgimg {
           position: absolute;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          height: var(--pct, 0%);
-          background: rgba(255, 208, 77, 0.28);
-          border-radius: 16px;
-          pointer-events: none;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center;
+          display: block;
           z-index: 0;
         }
 
-        /* keep contents above overlay */
-        .btile > * {
-          position: relative;
+        .btile__overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(to bottom,
+            rgba(0,0,0,0.05) 0%,
+            rgba(0,0,0,0.08) 25%,
+            rgba(0,0,0,0.65) 58%,
+            rgba(0,0,0,0.93) 100%
+          );
           z-index: 1;
         }
 
-        .btile--done {
-          background: linear-gradient(180deg, rgba(36,78,48,.92), rgba(24,56,34,.96));
-          border-color: rgba(46,204,113,.35);
-        }
-        .btile--empty { opacity: 0.85; }
-
-        /* no image: reclaim vertical space (FIX: remove stray 'f', keep footer height) */
-        .btile--noimg {
-          grid-template-rows: 1fr 64px; /* text / footer */
+        .btile__done-tint {
+          position: absolute;
+          inset: 0;
+          background: rgba(46,204,113,0.18);
+          z-index: 2;
+          pointer-events: none;
         }
 
-        .btile__img {
-          border-radius: 12px;
-          background: rgba(0,0,0,.35);
-          border: 1px solid rgba(255,255,255,.08);
-          overflow: hidden;
-          display: grid;
-          place-items: center;
+        .btile__topbar {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          z-index: 4;
         }
 
-        .btile__img img{
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          object-position: center;
-          padding: 6px;
-          display: block;
+        .btile__star {
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          background: rgba(0,0,0,0.52);
+          backdrop-filter: blur(6px);
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 20px;
+          padding: 3px 8px;
+          font-size: 12px;
+          font-weight: 800;
+          color: rgba(255,255,255,0.72);
+          cursor: pointer;
+          line-height: 1.4;
+          transition: background 120ms, color 120ms, border-color 120ms;
+          white-space: nowrap;
         }
+        .btile__star--on {
+          background: rgba(255,208,77,0.22);
+          border-color: rgba(255,208,77,0.55);
+          color: #ffd04d;
+        }
+        .btile__star:hover:not(:disabled):not(.btile__star--readonly) {
+          background: rgba(255,255,255,0.18);
+        }
+        .btile__star--readonly { cursor: default; }
 
-        .btile__img img.img-cover {
-          object-fit: cover;
-          padding: 0;
-        }
-
-        .btile__text {
-          min-height: 0;
-          padding: 2px 2px 0;
-          overflow: hidden;
-        }
-        .btile__text--noimg {
-          padding-top: 4px;
+        .btile__body {
+          position: relative;
+          z-index: 3;
+          padding: 8px 10px 10px;
         }
 
         .btile__title {
-          font-size: 12.5px;
+          font-size: 12px;
           font-weight: 900;
-          line-height: 1.25;
-          color: rgba(255,255,255,.95);
-          margin: 0;
-          max-height: calc(1.25em * 2);
+          line-height: 1.3;
+          color: rgba(255,255,255,.97);
+          margin: 0 0 2px;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
           overflow: hidden;
         }
+
         .btile__req {
-          margin-top: 4px;
-          font-size: 11px;
+          font-size: 10.5px;
           font-weight: 700;
-          line-height: 1.25;
-          color: rgba(255,255,255,.66);
-          max-height: calc(1.25em * 2);
+          line-height: 1.3;
+          color: rgba(255,255,255,.58);
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
           overflow: hidden;
         }
 
-        /* Footer: fill footer row and allow pinning the count to the bottom */
-        .btile__footer{
-          position: relative;
-          z-index: 2;
-          height: 64px;            /* MUST match grid footer row */
-          display: block;
-          align-self: stretch;
+        .btile__meta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 5px;
         }
 
-        /* Internal layout: % on top, Interested toggle, spacer, count pinned bottom */
-        .btile__interest{
-          width: 100%;
-          height: 100%;
-          display: grid;
-          grid-template-rows: auto auto 1fr auto;
-          align-items: start;
-          gap: 4px;
-        }
-
-        /* Percent line above Interested */
-        .btile__pct,
-        .btile__progressLine{
-          font-size: 11px;
+        .btile__pct-label {
+          font-size: 10px;
           font-weight: 900;
-          color: #fff; /* FIX: readable on yellow */
-          text-shadow: 0 1px 2px rgba(0,0,0,.65);
-          line-height: 1;
-          margin: 0;
-          white-space: nowrap;
+          color: rgba(255,255,255,0.48);
+          letter-spacing: 0.03em;
         }
 
-        /* Interested count pinned to bottom of tile */
-        .btile__interestCount{
-          align-self: end;
-          margin: 0;
-          font-size: 11px;
-          font-weight: 800;
-          color: rgba(255,255,255,.72);
-          text-shadow: 0 1px 2px rgba(0,0,0,.55);
-          line-height: 1;
-          padding-left: 2px;
-        }
-
-        .interested-count{
-          font-size: 11px;
-          font-weight: 800;
-          color: rgba(255,255,255,.62);
-          white-space: nowrap;
-        }
-
-        .btile__check {
-          position: absolute;
-          top: 8px;
-          right: 10px;
-          font-size: 18px;
+        .btile__badge-done {
+          font-size: 10px;
           font-weight: 900;
           color: #2ecc71;
-          text-shadow: 0 6px 16px rgba(0,0,0,.6);
-          pointer-events: none;
-          z-index: 2;
         }
 
-        .avatar-sm{
+        .btile__bar {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: rgba(255,255,255,0.05);
+          z-index: 5;
+        }
+        .btile__bar-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #f39c12, #ffd04d);
+          transition: width 300ms ease;
+        }
+        .btile__bar-fill--done { background: #2ecc71; }
+
+        .avatar-sm {
           width: 18px !important;
           height: 18px !important;
           border-radius: 999px !important;
@@ -1253,8 +1221,8 @@ export default function BoardPage() {
         }
         @media (max-width: 700px) {
           .bgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .btile { height: 190px; grid-template-rows: 82px 1fr 64px; } /* keep fixed footer */
-          .btile--noimg { grid-template-rows: 1fr 64px; }
+          .btile { height: 185px; }
+          .btile--floating { height: 165px; }
         }
       `}</style>
     </>

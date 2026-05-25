@@ -215,7 +215,7 @@ export default function LeaderboardPage() {
                       </div>
                     </div>
                     <div>
-                      <a className="btn" href={`/board?team=${s.team.id}`}>
+                      <a className="btn" href={`/board?team=${s.team.id}`} style={{ whiteSpace: "nowrap" }}>
                         View board
                       </a>
                     </div>
@@ -279,7 +279,7 @@ export default function LeaderboardPage() {
         }
         .lb-head {
           display: grid;
-          grid-template-columns: 40px 1fr 80px 1fr 100px;
+          grid-template-columns: 40px 1fr 80px 1fr 120px;
           gap: 10px;
           padding: 10px 14px;
           background: rgba(0, 0, 0, 0.3);
@@ -291,7 +291,7 @@ export default function LeaderboardPage() {
         }
         .lb-row {
           display: grid;
-          grid-template-columns: 40px 1fr 80px 1fr 100px;
+          grid-template-columns: 40px 1fr 80px 1fr 120px;
           gap: 10px;
           padding: 12px 14px;
           align-items: center;
