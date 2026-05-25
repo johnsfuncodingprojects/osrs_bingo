@@ -288,11 +288,16 @@ export default function AdminPage() {
     setTileImgMsg(null);
     try {
       const publicUrl = await uploadTileImage(tileImgCode, tileImgFile);
-      const { error } = await supabase
-        .from("squares")
-        .update({ image_url: publicUrl })
-        .eq("code", tileImgCode);
-      if (error) throw error;
+      const res = await fetch("/api/set-tile-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session!.access_token}`,
+        },
+        body: JSON.stringify({ code: tileImgCode, imageUrl: publicUrl }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? res.statusText);
       setTileImgMsg(`Image set for ${tileImgCode} across all teams.`);
       setTileImgFile(null);
       await refreshAll();
