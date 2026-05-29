@@ -746,20 +746,6 @@ export default function BoardPage() {
             {previewAsMember && <span className="badge" style={{ borderColor: "rgba(243,156,18,0.5)", color: "rgba(243,156,18,0.9)" }}>Member preview</span>}
           </div>
           <div className="row">
-            {!teamOverride && myTeams.length > 1 && (
-              <>
-                {myTeams.map((t) => (
-                  <button
-                    key={t.id}
-                    className={`workbtn${teamId === t.id ? " workbtn--on" : ""}`}
-                    onClick={() => switchTeam(t.id)}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-                <div style={{ width: 1, alignSelf: "stretch", background: "rgba(255,255,255,0.10)", margin: "0 2px" }} />
-              </>
-            )}
             {isAdmin && (
               <button
                 className="btn btn-ghost"
@@ -790,6 +776,19 @@ export default function BoardPage() {
               <p className="p" style={{ marginTop: 6 }}>
                 Tap a tile for details & claims. Use <b>Interested</b> toggles directly on the board.
               </p>
+              {!teamOverride && myTeams.length > 1 && (
+                <div className="row" style={{ marginTop: 10, gap: 6 }}>
+                  {myTeams.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`workbtn${teamId === t.id ? " workbtn--on" : ""}`}
+                      onClick={() => switchTeam(t.id)}
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="row">
