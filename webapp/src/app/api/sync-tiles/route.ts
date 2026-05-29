@@ -124,11 +124,11 @@ async function handlePost(req: NextRequest) {
       continue;
     }
 
-    // Find team name from the "Team Name:" row (col[26] = label, col[27] = value)
+    // Find team name from the "Team Name:" row (col[22] = label, col[23] = value)
     let teamName = "";
     for (const row of sheetRows) {
-      if ((row[26] ?? "").trim() === "Team Name:" && row[27]) {
-        teamName = row[27].trim();
+      if ((row[22] ?? "").trim() === "Team Name:" && row[23]) {
+        teamName = row[23].trim();
         break;
       }
     }
@@ -139,13 +139,13 @@ async function handlePost(req: NextRequest) {
       continue;
     }
 
-    // Parse tile progress (col[24] = tile num, col[30] = "0.0%")
+    // Parse tile progress (col[19] = tile num, col[25] = "0.0%")
     const progressRows: Array<{ team_id: string; code: string; progress_pct: number; completed: boolean }> = [];
     for (const row of sheetRows) {
-      if (row.length < 31) continue;
-      const num = parseInt(row[24] ?? "", 10);
+      if (row.length < 26) continue;
+      const num = parseInt(row[19] ?? "", 10);
       if (isNaN(num) || num < 1 || num > 22) continue;
-      const pct = parseFloat((row[30] ?? "").replace("%", "").trim());
+      const pct = parseFloat((row[25] ?? "").replace("%", "").trim());
       if (isNaN(pct)) continue;
       progressRows.push({
         team_id: teamId,
