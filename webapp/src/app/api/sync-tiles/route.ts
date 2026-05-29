@@ -124,11 +124,12 @@ async function handlePost(req: NextRequest) {
       continue;
     }
 
-    // Find team name from the "Team Name:" row (col[22] = label, col[23] = value)
+    // Find team name by scanning any column for "Team Name:" label
     let teamName = "";
     for (const row of sheetRows) {
-      if ((row[22] ?? "").trim() === "Team Name:" && row[23]) {
-        teamName = row[23].trim();
+      const idx = row.findIndex((cell) => (cell ?? "").trim() === "Team Name:");
+      if (idx !== -1 && row[idx + 1]) {
+        teamName = row[idx + 1].trim();
         break;
       }
     }
