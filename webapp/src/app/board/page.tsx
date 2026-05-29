@@ -43,6 +43,7 @@ type Profile = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  rsn: string | null;
 };
 
 const DEFAULT_SQUARES: Array<{
@@ -314,7 +315,7 @@ export default function BoardPage() {
 
     const { data: profs, error: pErr } = await supabase
       .from("profiles")
-      .select("id,display_name,avatar_url")
+      .select("id,display_name,avatar_url,rsn")
       .in("id", uidList);
 
     if (pErr) {
@@ -862,7 +863,7 @@ export default function BoardPage() {
                 ) : (
                   openInterested.slice(0, 50).map((u) => {
                     const p = profilesById[u.user_id];
-                    const name = p?.display_name || toNameFallback(u.user_id);
+                    const name = p?.rsn || p?.display_name || toNameFallback(u.user_id);
                     const url = p?.avatar_url || "/avatar.png";
                     return (
                       <div key={u.user_id} className="interest-row">
