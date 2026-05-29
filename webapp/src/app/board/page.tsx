@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/hooks/useSession";
 import { getMyTeams } from "@/lib/team";
@@ -117,10 +117,11 @@ function clampPct(v: any) {
 export default function BoardPage() {
   const { session, loading } = useSession();
   const router = useRouter();
+  const initializedForUser = useRef<string | null>(null);
 
   const searchParams =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-  const teamOverride = searchParams?.get("team"); // admin-only
+  const teamOverride = searchParams?.get("team") ?? null;
 
   const [teamId, setTeamId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState<string | null>(null);
@@ -181,6 +182,8 @@ export default function BoardPage() {
 
   useEffect(() => {
     if (!session) return;
+    if (initializedForUser.current === session.user.id) return;
+    initializedForUser.current = session.user.id;
 
     (async () => {
       try {
@@ -742,21 +745,21 @@ export default function BoardPage() {
             {adminViewing && <span className="badge">Admin view</span>}
             {previewAsMember && <span className="badge" style={{ borderColor: "rgba(243,156,18,0.5)", color: "rgba(243,156,18,0.9)" }}>Member preview</span>}
           </div>
-          {!teamOverride && myTeams.length > 1 && (
-            <div className="row" style={{ gap: 6 }}>
-              {myTeams.map((t) => (
-                <button
-                  key={t.id}
-                  className={`btn btn-ghost${teamId === t.id ? " btn-team-active" : ""}`}
-                  style={{ fontSize: 12, padding: "6px 10px" }}
-                  onClick={() => switchTeam(t.id)}
-                >
-                  {t.name}
-                </button>
-              ))}
-            </div>
-          )}
           <div className="row">
+            {!teamOverride && myTeams.length > 1 && (
+              <>
+                {myTeams.map((t) => (
+                  <button
+                    key={t.id}
+                    className={`workbtn${teamId === t.id ? " workbtn--on" : ""}`}
+                    onClick={() => switchTeam(t.id)}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+                <div style={{ width: 1, alignSelf: "stretch", background: "rgba(255,255,255,0.10)", margin: "0 2px" }} />
+              </>
+            )}
             {isAdmin && (
               <button
                 className="btn btn-ghost"
