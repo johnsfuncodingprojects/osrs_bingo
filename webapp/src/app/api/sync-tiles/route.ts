@@ -151,7 +151,7 @@ async function handlePost(req: NextRequest) {
       progressRows.push({
         team_id: teamId,
         code: `S${String(num).padStart(2, "0")}`,
-        progress_pct: pct,
+        progress_pct: Math.round(pct),
         completed: pct >= 100,
       });
     }
