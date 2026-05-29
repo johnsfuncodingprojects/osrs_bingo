@@ -87,7 +87,7 @@ async function handlePost(req: NextRequest) {
   for (const row of summaryRows) {
     if (row.length < 8) continue;
     const num = parseInt(row[4], 10);
-    if (isNaN(num) || num < 1 || num > 30) continue;
+    if (isNaN(num) || num < 1 || num > 22) continue;
     tiles.push({
       code: `S${String(num).padStart(2, "0")}`,
       title: (row[6] ?? "").trim(),
@@ -144,7 +144,7 @@ async function handlePost(req: NextRequest) {
     for (const row of sheetRows) {
       if (row.length < 31) continue;
       const num = parseInt(row[24] ?? "", 10);
-      if (isNaN(num) || num < 1 || num > 30) continue;
+      if (isNaN(num) || num < 1 || num > 22) continue;
       const pct = parseFloat((row[30] ?? "").replace("%", "").trim());
       if (isNaN(pct)) continue;
       progressRows.push({

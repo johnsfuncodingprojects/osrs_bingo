@@ -171,8 +171,8 @@ export default function BoardPage() {
   const floatingRight = byCode.get("S02") ?? null;
 
   const gridCodes = useMemo(() => {
-    // S03..S30 (28 tiles)
-    return Array.from({ length: 28 }, (_, i) => `S${String(i + 3).padStart(2, "0")}`);
+    // S03..S22 (20 tiles, 5×4 grid)
+    return Array.from({ length: 20 }, (_, i) => `S${String(i + 3).padStart(2, "0")}`);
   }, []);
 
   useEffect(() => {
@@ -775,12 +775,10 @@ export default function BoardPage() {
             <div className="bspacer" />
             <div className="bspacer" />
             <div className="bspacer" />
-            <div className="bspacer" />
-            <div className="bspacer" />
             {renderTile(floatingRight, "float-right", "floating")}
           </div>
 
-          {/* Main board: 4 rows × 7 cols = 28 tiles */}
+          {/* Main board: 4 rows × 5 cols = 20 tiles */}
           <div className="bgrid bgrid--main" style={{ marginTop: 12 }}>
             {gridCodes.map((code) => {
               const sq = byCode.get(code) ?? null;
@@ -1041,7 +1039,7 @@ export default function BoardPage() {
       <style jsx global>{`
         .bgrid {
           display: grid;
-          grid-template-columns: repeat(7, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 8px;
         }
         .bgrid--main { padding-bottom: 40px; }
@@ -1211,15 +1209,12 @@ export default function BoardPage() {
           background: rgba(0,0,0,.25);
         }
 
-        @media (max-width: 1200px) {
-          .bgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        @media (max-width: 900px) {
+          .bgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
           .bspacer { display: none; }
           .bgrid--floating { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
-        @media (max-width: 950px) {
-          .bgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-        }
-        @media (max-width: 700px) {
+        @media (max-width: 600px) {
           .bgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .btile { height: 185px; }
           .btile--floating { height: 165px; }
