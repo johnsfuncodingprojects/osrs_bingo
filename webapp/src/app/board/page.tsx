@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/hooks/useSession";
 import { getMyTeams } from "@/lib/team";
+import type { Team } from "@/lib/team";
 import { useRouter } from "next/navigation";
 import { uploadClaimImage, getSignedClaimUrl } from "@/lib/storage";
 
@@ -122,6 +123,8 @@ export default function BoardPage() {
   const teamOverride = searchParams?.get("team"); // admin-only
 
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState<string | null>(null);
+  const [myTeams, setMyTeams] = useState<Team[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [adminViewing, setAdminViewing] = useState(false);
@@ -194,8 +197,9 @@ export default function BoardPage() {
         setIsAdmin(isAdminUser);
 
         // must be on at least one team to view any board (admins exempt)
-        const myTeams = await getMyTeams();
-        if (!isAdminUser && myTeams.length === 0 && !teamOverride) {
+        const teams = await getMyTeams();
+        setMyTeams(teams);
+        if (!isAdminUser && teams.length === 0 && !teamOverride) {
           router.push("/team");
           return;
         }
@@ -205,7 +209,7 @@ export default function BoardPage() {
           tid = teamOverride;
           setAdminViewing(isAdminUser);
         } else {
-          tid = myTeams[0]?.id ?? null;
+          tid = teams[0]?.id ?? null;
           setAdminViewing(false);
         }
 
@@ -215,6 +219,14 @@ export default function BoardPage() {
         }
 
         setTeamId(tid);
+
+        // Fetch the team name for display
+        const { data: teamRow } = await supabase
+          .from("teams")
+          .select("name")
+          .eq("id", tid)
+          .maybeSingle();
+        setTeamName((teamRow as any)?.name ?? null);
 
         const { data: memberRow } = await supabase
           .from("team_members")
@@ -257,6 +269,19 @@ export default function BoardPage() {
     if (openSquareId) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openSquareId]);
+
+  async function switchTeam(tid: string) {
+    setTeamId(tid);
+    setOpenSquareId(null);
+    setMsg(null);
+    const { data: teamRow } = await supabase.from("teams").select("name").eq("id", tid).maybeSingle();
+    setTeamName((teamRow as any)?.name ?? null);
+    const { data: memberRow } = await supabase
+      .from("team_members").select("user_id").eq("team_id", tid).eq("user_id", session!.user.id).maybeSingle();
+    setIsMember(!!memberRow);
+    setAdminViewing(false);
+    await loadTeamData(tid);
+  }
 
   async function loadTeamData(tid: string) {
     await loadSquares(tid);
@@ -713,9 +738,24 @@ export default function BoardPage() {
             <span className="dot" />
             OSRS Bingo
             <span className="badge">Board</span>
+            {teamName && <span className="badge" style={{ borderColor: "rgba(88,101,242,0.5)", color: "rgba(180,185,255,0.95)" }}>{teamName}</span>}
             {adminViewing && <span className="badge">Admin view</span>}
             {previewAsMember && <span className="badge" style={{ borderColor: "rgba(243,156,18,0.5)", color: "rgba(243,156,18,0.9)" }}>Member preview</span>}
           </div>
+          {!teamOverride && myTeams.length > 1 && (
+            <div className="row" style={{ gap: 6 }}>
+              {myTeams.map((t) => (
+                <button
+                  key={t.id}
+                  className={`btn btn-ghost${teamId === t.id ? " btn-team-active" : ""}`}
+                  style={{ fontSize: 12, padding: "6px 10px" }}
+                  onClick={() => switchTeam(t.id)}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="row">
             {isAdmin && (
               <button
@@ -725,6 +765,11 @@ export default function BoardPage() {
               >
                 {previewAsMember ? "Exit preview" : "Preview as member"}
               </button>
+            )}
+            {teamOverride && myTeams.length > 0 && (
+              <a className="btn btn-primary" href="/board" style={{ fontSize: 12, padding: "6px 12px" }}>
+                My board
+              </a>
             )}
             <a className="btn btn-ghost" href="/team">Team</a>
             <a className="btn btn-ghost" href="/leaderboard">Leaderboard</a>
@@ -1038,6 +1083,12 @@ export default function BoardPage() {
       )}
 
       <style jsx global>{`
+        .btn-team-active {
+          border-color: rgba(88,101,242,0.6);
+          background: rgba(88,101,242,0.18);
+          color: rgba(255,255,255,0.95);
+        }
+
         .bgrid {
           display: grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
